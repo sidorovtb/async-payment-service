@@ -15,6 +15,7 @@ class Settings:
     outbox_batch_size: int
     api_version: str
     payment_processing_max_attempts: int
+    payment_processing_max_parallelism: int
 
 
 settings = Settings(
@@ -29,4 +30,5 @@ settings = Settings(
     api_base_url=os.getenv("API_BASE_URL", "/api"),
     api_version=os.getenv("API_VERSION", "unknown"),
     payment_processing_max_attempts=int(os.getenv("PAYMENT_PROCESSING_MAX_ATTEMPTS", "3")),
+    payment_processing_max_parallelism=int(os.getenv("PAYMENT_PROCESSING_MAX_PARALLELISM", "5")),
 )

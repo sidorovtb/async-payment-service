@@ -10,7 +10,11 @@ from app.common.config import Settings
 def create_broker(settings: Settings) -> RabbitBroker:
     return RabbitBroker(
         settings.rabbitmq_url,
-        default_channel=Channel(prefetch_count=1, publisher_confirms=True, on_return_raises=True),
+        default_channel=Channel(
+            prefetch_count=settings.payment_processing_max_parallelism,
+            publisher_confirms=True,
+            on_return_raises=True,
+        ),
     )
 
 

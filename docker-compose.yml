@@ -1,0 +1,86 @@
+x-app: &app
+  build: .
+  environment:
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    API_KEY: ${API_KEY}
+    OUTBOX_INTERVAL: ${OUTBOX_INTERVAL}
+    OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE}
+    RETRY_DELAY_S: ${RETRY_DELAY_S}
+    WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT}
+    PUBLISH_TIMEOUT: ${PUBLISH_TIMEOUT}
+    API_BASE_URL: ${API_BASE_URL}
+    API_VERSION: ${API_VERSION}
+    PAYMENT_PROCESSING_MAX_ATTEMPTS: ${PAYMENT_PROCESSING_MAX_ATTEMPTS}
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17.11-alpine3.24
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "0.0.0.0:${POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.3.7-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "0.0.0.0:${RABBITMQ_PORT}:5672"
+      - "0.0.0.0:${RABBITMQ_MANAGEMENT_PORT}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn api:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "${UVICORN_PORT}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  outbox_worker:
+    <<: *app
+    command: ["python", "outbox_worker.py"]
+    depends_on:
+      api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  payment_processor:
+    <<: *app
+    command: ["python", "payment_processor_worker.py"]
+    depends_on:
+      api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  rabbitmq_data:

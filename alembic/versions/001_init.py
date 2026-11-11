@@ -35,8 +35,15 @@ def upgrade():
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("published_at", sa.DateTime(timezone=True)),
     )
+    op.create_index(
+        "ix_outbox_unpublished",
+        "outbox",
+        ["id"],
+        postgresql_where=sa.text("published_at IS NULL"),
+    )
 
 
 def downgrade():
+    op.drop_index("ix_outbox_unpublished", table_name="outbox")
     op.drop_table("outbox")
     op.drop_table("payments")
